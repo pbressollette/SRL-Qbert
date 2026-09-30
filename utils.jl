@@ -16,11 +16,11 @@ mkpath(plotdir)
 ## Set up the environment
 
 # Environment structure
-struct Qbert
+mutable struct Qbert
     ale
     base
     seqs
-    function Qbert(k=3)
+    function Qbert(k=2)
         ale = ALE_new()
         loadROM(ale, "qbert")
         base = getMinimalActionSet(ale)
@@ -33,23 +33,31 @@ end
 
 # Reset the environment
 function reset!(env::Qbert)
-    ale = env.ale
-    reset_game(ale)
-    return getRAM(ale)
+    reset_game(env.ale)
+    return Float32.(getRAM(env.ale)) ./ 255.0f0
 end
 
-# Step function 
+function count_colored_cubes(env::Qbert)
+    ram = getRAM(env.ale)
+    tile_indices = [22, 53, 55, 84, 86, 88, 99, 101, 103, 105, 
+                    2, 4, 6, 8, 10, 33, 35, 37, 39, 41, 43]
+    return sum(ram[i] != 148 for i in tile_indices)
+end
+
+# Step function
 function step!(env::Qbert, action)
     seq = env.seqs[argmax(action)]
+    cubes_before = count_colored_cubes(env)
     total_reward = 0.0f0
     done = false
     for idx in seq
-        reward = act(env.ale, env.base[idx])
-        total_reward += reward
+        total_reward += act(env.ale, env.base[idx])
         done = game_over(env.ale)
         done && break
     end
-    return Float32.(getRAM(env.ale)), total_reward, game_over(env.ale)
+    cubes_after = count_colored_cubes(env)
+    shaped_reward = total_reward / 25.0f0 + 0.1f0 * Float32(cubes_after - cubes_before)
+    return Float32.(getRAM(env.ale)) ./ 255.0f0, shaped_reward, game_over(env.ale)
 end
 
 # Random solution
@@ -89,7 +97,7 @@ end
 function val_test(env::Qbert, model, episodes)
     rewards = Float64[]
     for _ in 1:episodes
-        state = Float32.(reset!(env))
+        state = reset!(env)
         total_reward = 0.0
         done = false
         while !done
@@ -107,7 +115,7 @@ end
 # Episode generation
 function generate_episode(env::Qbert, model, sigma)
     buffer = []
-    state = Float32.(reset!(env))
+    state = reset!(env)
     done = false
     while !done
         Θ = model(state)
@@ -115,9 +123,30 @@ function generate_episode(env::Qbert, model, sigma)
         action = Qbert_optimization(η)
         state_next, reward, done = step!(env, action)
         push!(
-            buffer, (state, Θ, η, action, reward, state_next, done)
+            buffer, (state, Θ, η, action, reward, state_next, done, false)
         )
         state = state_next
+    end
+    return buffer
+end
+
+function generate_episode_uniform(env::Qbert, gamma=0.99f0)
+    buffer = []
+    state = reset!(env)
+    done = false
+    while !done
+        action = random_solution(env)
+        state_next, reward, done = step!(env, action)
+        Θ = zeros(Float32, length(env.seqs))
+        push!(buffer, (state, Θ, action, action, reward, state_next, done, true))
+        state = state_next
+    end
+    # Calcul des returns discountés
+    G = 0.0f0
+    for i in length(buffer):-1:1
+        t = buffer[i]
+        G = t[5] + gamma * G
+        buffer[i] = (t[1], t[2], t[3], t[4], G, t[6], t[7], t[8])
     end
     return buffer
 end
@@ -142,13 +171,6 @@ function rb_sample(replay_buffer, batch_size)
     return [replay_buffer[i] for i in idxs]
 end
 
-# Reward comparison function
-function reward_comparison(train_rew, val_rew; minim=1)
-    means = [(train_rew[i] + val_rew[i]) / 2 for i in eachindex(train_rew)]
-    length(means) >= minim ? means = means[minim:end] : nothing
-    last_mean = means[end]  # Mean of the last two elements
-    return last_mean == maximum(means)  # Check if it's the largest mean
-end
 
 
 

@@ -7,12 +7,11 @@ function load_data()
     log_srl = load(joinpath(logdir, "Qbert_SRL_training_results.jld2"))
     log_bl = load(joinpath(logdir, "Qbert_baselines.jld2"))
 
-    train_data = [log_srl["val_rew"][1:(end - 1)]]
+    train_data = [log_srl["train_rew"][1:(end - 1)]]
 
     final_data = [
-        log_srl["train_final"][1:(end - 1)], log_bl["random_train"][1:(end - 1)], 
-        log_srl["test_final"][1:(end - 1)], log_bl["random_test"][1:(end - 1)]
-        ]
+        log_srl["train_final"][1:(end - 1)], log_bl["random_train"][1:(end - 1)]
+    ]
 
     return train_data, final_data
 end
@@ -102,35 +101,29 @@ end
 function boxplot_random(
     data,
     factor; # Factor to account for positive or negative rewards
-    size=(800, 400),
+    figsize=(800, 400),
     log_ticks=[-3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3],
     ylimits=(-100, 100),
     ytext="Env: delta random (%)",
 )
     ε = eps()
-    srl_train, train_benchmark, srl_test, test_benchmark = data[1], data[2], data[3], data[4]
+    srl_train, train_benchmark = data[1], data[2]
 
     # Calculate percentage differences from benchmark (skip entries where benchmark is ~0)
     valid_train = abs.(train_benchmark) .> ε
-    valid_test  = abs.(test_benchmark)  .> ε
     train_delta = factor .* (srl_train[valid_train] .- train_benchmark[valid_train]) .* 100 ./ train_benchmark[valid_train]
-    test_delta  = factor .* (srl_test[valid_test]  .- test_benchmark[valid_test])   .* 100 ./ test_benchmark[valid_test]
 
     # Apply log transform to data
-    data_plot = [
-        filter(isfinite, sign.(d) .* log10.(ε .+ abs.(d))) for d in [train_delta, test_delta]
-    ]
+    data_plot = [filter(isfinite, sign.(d) .* log10.(ε .+ abs.(d))) for d in [train_delta]]
 
     # Calculate original percentage values for tick labels
-    # Inverse of sign(x) * log10(eps + |x|) ≈ sign(y) * (10^|y| - eps)
     orig_ticks = [sign(t) * (10^abs(t) - ε) for t in log_ticks]
     tick_labels = ["$(round(Int, t))" for t in orig_ticks]
 
     labels = ["SRL"]
     colors = [:red]
 
-    # Create two boxplots with custom ticks
-    plt_train = create_boxplot(
+    plt = create_boxplot(
         [data_plot[1]],
         colors,
         labels;
@@ -139,18 +132,8 @@ function boxplot_random(
         ylims=ylimits,
     )
 
-    plt_test = create_boxplot(
-        [data_plot[2]],
-        colors,
-        labels;
-        title="test",
-        yticks=(log_ticks, tick_labels),
-        ylims=ylimits,
-    )
-
-    # Combine them side by side
-    plt = plot(plt_train, plt_test; layout=(1, 2), size)
-    ylabel!(plt[1], ytext; labelfontsize=16)
+    plot!(plt; size=figsize)
+    ylabel!(plt, ytext; labelfontsize=16)
     return plt
 end
 
