@@ -103,11 +103,6 @@ function SRL_Qbert(
             end
 
             # Critic update
-            # y = Float32[
-            #     batches[i][j][7] ? batches[i][j][5] :
-            #     batches[i][j][5] + gamma * target_critic(vcat(batches[i][j][6], Qbert_optimization(model(batches[i][j][6]))))[1]
-            #     for j in 1:batch_size
-            # ]    
             y = Float32[
                 let t = batches[i][j]
                     (t[8] || t[7]) ? t[5] :
@@ -142,11 +137,11 @@ function SRL_Qbert(
                 "qspread:", round(mean(ep_q_spreads), digits=4)
 
         # Update schedules
-        # sigmaF with accelerated decreasing post-warmup
+        # sigmaF with accelerated decrease post-warmup
         if e <= critic_warmup
             sigmaF = sigmaF_values[1]  # constant during warmup
         elseif e <= critic_warmup + 50
-            # rapid decreasing on 50 epsiodes after warmup
+            # rapid decrease over 50 episodes after warmup
             progress = (e - critic_warmup) / 50
             sigmaF = sigmaF_values[1] - progress * (sigmaF_values[1] - sigmaF_values[2])
         else

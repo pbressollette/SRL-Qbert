@@ -141,7 +141,7 @@ function generate_episode_uniform(env::Qbert, gamma=0.99f0)
         push!(buffer, (state, Θ, action, action, reward, state_next, done, true))
         state = state_next
     end
-    # Calcul des returns discountés
+    # Compute discounted returns (Monte Carlo targets)
     G = 0.0f0
     for i in length(buffer):-1:1
         t = buffer[i]
@@ -170,10 +170,3 @@ function rb_sample(replay_buffer, batch_size)
     idxs = rand(eachindex(replay_buffer), batch_size)
     return [replay_buffer[i] for i in idxs]
 end
-
-
-
-
-
-
-
